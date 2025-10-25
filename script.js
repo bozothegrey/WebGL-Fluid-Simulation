@@ -114,6 +114,7 @@ let recordingTimeout = null;
 let recordingMimeType = 'video/webm';
 const recordingStatus = { status: 'idle' };
 let recordingStatusController = null;
+let recordToggleButton = null;
 
 if (isMobile()) {
     config.DYE_RESOLUTION = 512;
@@ -258,22 +259,28 @@ function startGUI () {
         }
     }
     const toggleController = captureFolder.add({ fun: toggleRecording }, 'fun').name('Toggle Recording');
-    if (toggleController) {
-        if (toggleController.__li && toggleController.__li.classList) {
-            toggleController.__li.classList.add('record-toggle');
+    if (toggleController && toggleController.__li) {
+        toggleController.__li.classList.add('record-toggle');
+
+        const label = toggleController.__li.querySelector('.property-name');
+        if (label) {
+            label.classList.add('record-toggle-label');
         }
-        const buttonEl = toggleController.domElement;
+
+        const buttonEl = toggleController.__li.querySelector('button, .button');
         if (buttonEl) {
-            if (buttonEl.classList) {
-                buttonEl.classList.add('record-toggle-button');
-            }
-            buttonEl.textContent = 'Start / Stop Recording';
-        }
-        if (toggleController.__li) {
-            const label = toggleController.__li.querySelector('.property-name');
-            if (label) {
-                label.classList.add('record-toggle-label');
-            }
+            buttonEl.classList.add('record-toggle-button');
+            buttonEl.setAttribute('tabindex', '0');
+            if (!buttonEl.getAttribute('role'))
+                buttonEl.setAttribute('role', 'button');
+            buttonEl.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    toggleRecording();
+                }
+            });
+            recordToggleButton = buttonEl;
+            refreshRecordToggleButton(recordingStatus.status);
         }
     }
 
@@ -518,6 +525,44 @@ function updateRecordingStatus (status) {
     recordingStatus.status = status;
     if (recordingStatusController && typeof recordingStatusController.setValue === 'function')
         recordingStatusController.setValue(status);
+    refreshRecordToggleButton(status);
+}
+
+function refreshRecordToggleButton (status) {
+    if (!recordToggleButton)
+        return;
+
+    recordToggleButton.classList.remove('is-recording', 'is-disabled', 'is-warning');
+
+    let label = 'Start Recording';
+
+    switch (status) {
+    case 'recording':
+        label = 'Stop Recording';
+        recordToggleButton.classList.add('is-recording');
+        break;
+    case 'saving':
+        label = 'Saving...';
+        recordToggleButton.classList.add('is-disabled');
+        break;
+    case 'unsupported':
+        label = 'Recording Unsupported';
+        recordToggleButton.classList.add('is-disabled');
+        break;
+    case 'error':
+        label = 'Retry Recording';
+        recordToggleButton.classList.add('is-warning');
+        break;
+    default:
+        label = 'Start Recording';
+        break;
+    }
+
+    recordToggleButton.textContent = label;
+    recordToggleButton.setAttribute('data-status', status);
+    recordToggleButton.setAttribute('aria-pressed', status === 'recording' ? 'true' : 'false');
+    const isDisabled = status === 'saving' || status === 'unsupported';
+    recordToggleButton.setAttribute('aria-disabled', isDisabled ? 'true' : 'false');
 }
 
 function getSupportedMimeType () {
