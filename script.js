@@ -257,7 +257,25 @@ function startGUI () {
             input.style.cursor = 'default';
         }
     }
-    captureFolder.add({ fun: toggleRecording }, 'fun').name('toggle recording');
+    const toggleController = captureFolder.add({ fun: toggleRecording }, 'fun').name('Toggle Recording');
+    if (toggleController) {
+        if (toggleController.__li && toggleController.__li.classList) {
+            toggleController.__li.classList.add('record-toggle');
+        }
+        const buttonEl = toggleController.domElement;
+        if (buttonEl) {
+            if (buttonEl.classList) {
+                buttonEl.classList.add('record-toggle-button');
+            }
+            buttonEl.textContent = 'Start / Stop Recording';
+        }
+        if (toggleController.__li) {
+            const label = toggleController.__li.querySelector('.property-name');
+            if (label) {
+                label.classList.add('record-toggle-label');
+            }
+        }
+    }
 
     let github = gui.add({ fun : () => {
         window.open('https://github.com/PavelDoGreat/WebGL-Fluid-Simulation');
