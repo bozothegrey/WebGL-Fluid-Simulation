@@ -54,6 +54,8 @@ googleLink.addEventListener('click', e => {
 // Simulation section
 
 const canvas = document.getElementsByTagName('canvas')[0];
+// Maintain a portrait-friendly 9:16 canvas aspect ratio for mobile wallpapers
+const TARGET_ASPECT_RATIO = 9 / 16;
 resizeCanvas();
 
 let config = {
@@ -1365,8 +1367,22 @@ function calcDeltaTime () {
 }
 
 function resizeCanvas () {
-    let width = scaleByPixelRatio(canvas.clientWidth);
-    let height = scaleByPixelRatio(canvas.clientHeight);
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let displayWidth = viewportWidth;
+    let displayHeight = Math.round(displayWidth / TARGET_ASPECT_RATIO);
+
+    if (displayHeight > viewportHeight) {
+        displayHeight = viewportHeight;
+        displayWidth = Math.round(displayHeight * TARGET_ASPECT_RATIO);
+    }
+
+    canvas.style.width = `${displayWidth}px`;
+    canvas.style.height = `${displayHeight}px`;
+
+    let width = scaleByPixelRatio(displayWidth);
+    let height = scaleByPixelRatio(displayHeight);
     if (canvas.width != width || canvas.height != height) {
         canvas.width = width;
         canvas.height = height;
@@ -1609,6 +1625,14 @@ function multipleSplats (amount) {
     }
 }
 
+function getCanvasRelativePointerPosition (clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+    };
+}
+
 function splat (x, y, dx, dy, color) {
     splatProgram.bind();
     gl.uniform1i(splatProgram.uniforms.uTarget, velocity.read.attach(0));
@@ -1633,8 +1657,9 @@ function correctRadius (radius) {
 }
 
 canvas.addEventListener('mousedown', e => {
-    let posX = scaleByPixelRatio(e.offsetX);
-    let posY = scaleByPixelRatio(e.offsetY);
+    const pos = getCanvasRelativePointerPosition(e.clientX, e.clientY);
+    let posX = scaleByPixelRatio(pos.x);
+    let posY = scaleByPixelRatio(pos.y);
     let pointer = pointers.find(p => p.id == -1);
     if (pointer == null)
         pointer = new pointerPrototype();
@@ -1644,8 +1669,9 @@ canvas.addEventListener('mousedown', e => {
 canvas.addEventListener('mousemove', e => {
     let pointer = pointers[0];
     if (!pointer.down) return;
-    let posX = scaleByPixelRatio(e.offsetX);
-    let posY = scaleByPixelRatio(e.offsetY);
+    const pos = getCanvasRelativePointerPosition(e.clientX, e.clientY);
+    let posX = scaleByPixelRatio(pos.x);
+    let posY = scaleByPixelRatio(pos.y);
     updatePointerMoveData(pointer, posX, posY);
 });
 
@@ -1659,8 +1685,9 @@ canvas.addEventListener('touchstart', e => {
     while (touches.length >= pointers.length)
         pointers.push(new pointerPrototype());
     for (let i = 0; i < touches.length; i++) {
-        let posX = scaleByPixelRatio(touches[i].pageX);
-        let posY = scaleByPixelRatio(touches[i].pageY);
+        const pos = getCanvasRelativePointerPosition(touches[i].clientX, touches[i].clientY);
+        let posX = scaleByPixelRatio(pos.x);
+        let posY = scaleByPixelRatio(pos.y);
         updatePointerDownData(pointers[i + 1], touches[i].identifier, posX, posY);
     }
 });
@@ -1671,8 +1698,9 @@ canvas.addEventListener('touchmove', e => {
     for (let i = 0; i < touches.length; i++) {
         let pointer = pointers[i + 1];
         if (!pointer.down) continue;
-        let posX = scaleByPixelRatio(touches[i].pageX);
-        let posY = scaleByPixelRatio(touches[i].pageY);
+        const pos = getCanvasRelativePointerPosition(touches[i].clientX, touches[i].clientY);
+        let posX = scaleByPixelRatio(pos.x);
+        let posY = scaleByPixelRatio(pos.y);
         updatePointerMoveData(pointer, posX, posY);
     }
 }, false);
