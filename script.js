@@ -115,6 +115,8 @@ let recordingMimeType = 'video/webm';
 const recordingStatus = { status: 'idle' };
 let recordingStatusController = null;
 let recordToggleButton = null;
+let recordToggleGuardActive = false;
+let recordToggleGuardResetId = null;
 
 if (isMobile()) {
     config.DYE_RESOLUTION = 512;
@@ -415,10 +417,24 @@ function downloadURI (filename, uri) {
 }
 
 function toggleRecording () {
+    if (recordToggleGuardActive)
+        return;
+
+    recordToggleGuardActive = true;
+    if (recordToggleGuardResetId !== null) {
+        clearTimeout(recordToggleGuardResetId);
+        recordToggleGuardResetId = null;
+    }
+
     if (config.RECORDING)
         stopRecording();
     else
         startRecording();
+
+    recordToggleGuardResetId = setTimeout(() => {
+        recordToggleGuardActive = false;
+        recordToggleGuardResetId = null;
+    }, 0);
 }
 
 function startRecording () {
