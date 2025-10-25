@@ -275,6 +275,27 @@ function startGUI () {
             recordToggleButton = buttonEl;
             refreshRecordToggleButton(recordingStatus.status);
         }
+        const labelEl = toggleController.__li.querySelector('.property-name');
+        if (labelEl) {
+            labelEl.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            });
+        }
+        toggleController.__li.addEventListener('click', event => {
+            if (!recordToggleButton || recordToggleButton.contains(event.target))
+                return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }, true);
+        toggleController.__li.addEventListener('keydown', event => {
+            if (!recordToggleButton || recordToggleButton.contains(event.target))
+                return;
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            }
+        }, true);
     }
 
     let github = gui.add({ fun : () => {
