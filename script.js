@@ -82,6 +82,9 @@ let config = {
     SUNRAYS: true,
     SUNRAYS_RESOLUTION: 196,
     SUNRAYS_WEIGHT: 1.0,
+    RECORDING_DURATION: 10,
+    RECORDING_FPS: 30,
+    RECORDING: false,
 }
 
 function pointerPrototype () {
@@ -102,6 +105,13 @@ let splatStack = [];
 pointers.push(new pointerPrototype());
 
 const { gl, ext } = getWebGLContext(canvas);
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordingTimeout = null;
+let recordingMimeType = 'video/webm';
+const recordingStatus = { status: 'idle' };
+let recordingStatusController = null;
 
 if (isMobile()) {
     config.DYE_RESOLUTION = 512;
@@ -235,6 +245,17 @@ function startGUI () {
     captureFolder.addColor(config, 'BACK_COLOR').name('background color');
     captureFolder.add(config, 'TRANSPARENT').name('transparent');
     captureFolder.add({ fun: captureScreenshot }, 'fun').name('take screenshot');
+    captureFolder.add(config, 'RECORDING_DURATION', 3, 30).name('record length (s)').step(1);
+    captureFolder.add(config, 'RECORDING_FPS', 15, 60).name('record fps').step(1);
+    recordingStatusController = captureFolder.add(recordingStatus, 'status').name('recording status');
+    if (recordingStatusController && recordingStatusController.domElement) {
+        const input = recordingStatusController.domElement.querySelector('input');
+        if (input) {
+            input.setAttribute('readonly', true);
+            input.style.cursor = 'default';
+        }
+    }
+    captureFolder.add({ fun: toggleRecording }, 'fun').name('toggle recording');
 
     let github = gui.add({ fun : () => {
         window.open('https://github.com/PavelDoGreat/WebGL-Fluid-Simulation');
@@ -326,6 +347,10 @@ function clamp01 (input) {
     return Math.min(Math.max(input, 0), 1);
 }
 
+function clamp (input, min, max) {
+    return Math.max(min, Math.min(max, input));
+}
+
 function textureToCanvas (texture, width, height) {
     let captureCanvas = document.createElement('canvas');
     let ctx = captureCanvas.getContext('2d');
@@ -346,6 +371,152 @@ function downloadURI (filename, uri) {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+}
+
+function toggleRecording () {
+    if (config.RECORDING)
+        stopRecording();
+    else
+        startRecording();
+}
+
+function startRecording () {
+    if (config.RECORDING)
+        return;
+
+    if (typeof MediaRecorder === 'undefined' || typeof canvas.captureStream !== 'function') {
+        updateRecordingStatus('unsupported');
+        alert('Recording is not supported in this browser.');
+        return;
+    }
+
+    const mimeType = getSupportedMimeType();
+    if (!mimeType) {
+        updateRecordingStatus('unsupported');
+        alert('Recording is not supported in this browser.');
+        return;
+    }
+
+    const fps = clamp(Math.floor(config.RECORDING_FPS) || 30, 1, 60);
+    let stream;
+    try {
+        stream = canvas.captureStream(fps);
+    } catch (e) {
+        console.warn('Failed to capture canvas stream', e);
+        updateRecordingStatus('error');
+        return;
+    }
+
+    recordedChunks = [];
+    recordingMimeType = mimeType;
+
+    try {
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
+    } catch (e) {
+        console.warn('Failed to start MediaRecorder', e);
+        updateRecordingStatus('error');
+        return;
+    }
+
+    mediaRecorder.ondataavailable = e => {
+        if (e.data && e.data.size > 0)
+            recordedChunks.push(e.data);
+    };
+    mediaRecorder.onstop = handleRecordingStop;
+    mediaRecorder.onerror = e => {
+        console.warn('Recording error', e);
+        config.RECORDING = false;
+        if (recordingTimeout) {
+            clearTimeout(recordingTimeout);
+            recordingTimeout = null;
+        }
+        mediaRecorder = null;
+        recordedChunks = [];
+        updateRecordingStatus('error');
+    };
+
+    config.RECORDING = true;
+    updateRecordingStatus('recording');
+
+    try {
+        mediaRecorder.start();
+    } catch (e) {
+        console.warn('Failed to start recording', e);
+        config.RECORDING = false;
+        updateRecordingStatus('error');
+        return;
+    }
+
+    const durationMs = clamp(Math.floor(config.RECORDING_DURATION * 1000), 1000, 600000);
+    recordingTimeout = setTimeout(() => {
+        stopRecording();
+    }, durationMs);
+}
+
+function stopRecording () {
+    if (!config.RECORDING || !mediaRecorder)
+        return;
+
+    if (recordingTimeout) {
+        clearTimeout(recordingTimeout);
+        recordingTimeout = null;
+    }
+
+    if (mediaRecorder.state !== 'inactive') {
+        updateRecordingStatus('saving');
+        mediaRecorder.stop();
+    }
+}
+
+function handleRecordingStop () {
+    config.RECORDING = false;
+
+    if (!recordedChunks.length) {
+        updateRecordingStatus('idle');
+        mediaRecorder = null;
+        return;
+    }
+
+    const blob = new Blob(recordedChunks, { type: recordingMimeType });
+    const url = URL.createObjectURL(blob);
+    const extension = recordingMimeType.includes('mp4') ? 'mp4' : 'webm';
+    const filename = `fluid-wallpaper-${Date.now()}.${extension}`;
+
+    downloadURI(filename, url);
+
+    setTimeout(() => {
+        URL.revokeObjectURL(url);
+    }, 1000);
+
+    recordedChunks = [];
+    mediaRecorder = null;
+    recordingTimeout = null;
+    updateRecordingStatus('idle');
+}
+
+function updateRecordingStatus (status) {
+    recordingStatus.status = status;
+    if (recordingStatusController && typeof recordingStatusController.setValue === 'function')
+        recordingStatusController.setValue(status);
+}
+
+function getSupportedMimeType () {
+    if (typeof MediaRecorder === 'undefined')
+        return null;
+
+    const types = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4'
+    ];
+
+    for (let i = 0; i < types.length; i++) {
+        if (MediaRecorder.isTypeSupported(types[i]))
+            return types[i];
+    }
+
+    return null;
 }
 
 class Material {
